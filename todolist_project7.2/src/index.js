@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Component } from 'react';
 import ReactDOM from 'react-dom';
 import './index.css';
 import { createStore, combineReducers } from 'redux'
@@ -13,12 +13,13 @@ const todo = (state, action) => {
         completed: false
       } //create obj
     case 'TOGGLE_TODO':
-      if (state.id !== action.id) {
-        return state;
-      } // state change 
+      //action.id is stored when you click to completed
+      if (state.id !== action.id)
+        return state; //return list obj having completed false
+
       return Object.assign({}, state, {
         completed: !state.completed
-      }); //copy obj having state change to tmp obj state (completed or not)
+      }); //return list obj having completed true
     default:
       return state;
   }
@@ -30,12 +31,11 @@ const todos = (state = [], action) => {
     case 'ADD_TODO':
       return [
         ...state, todo(undefined, action)
-      ];  // ...state: call all obj arrays
-    //function todo default undefined`
+      ];  // ...state: set obj todo to array
     case 'TOGGLE_TODO':
       return state.map(t => todo(t, action));
-    //  .map like forEach 
-    // => truyền từng tham số t vào hàm todo cuối cùng trả về 1 mảng mới nhờ map
+    //  .map like forEach: duyệt từng phần tử trong state list
+    // => return array, t đại diện cho một phần tử 
     //         state.map(function (t) => {
     //           return todo(t, action);
     //         }) 
@@ -49,7 +49,7 @@ const todos = (state = [], action) => {
 const visibilityFilter = (state = 'SHOW_ALL', action) => { //default state = 'Show All'
   switch (action.type) {
     case 'SET_VISIBILITY_FILTER':
-      return action.filter;
+      return action.filter; //return filter when change link
     default:
       return state;
   }
@@ -85,46 +85,78 @@ const Todo = ({ onClick, completed, text }) => (
 
 const TodoList = ({ todos, onTodoClick }) => (
   <ul>
-    {todos.map(todo => <Todo key={todo.id}{...todo} onClick={() => onTodoClick(todo.id)} />)}
+    {todos.map(todo => <Todo key={todo.id} {...todo} onClick={() => onTodoClick(todo.id)} />)}
   </ul>
 );
+
+class VisibleTodoList extends Component {
+  componentDidMount() { //is called when component added to DOM, good place to request load data
+    this.unsubscribe = store.subscribe(() => this.forceUpdate());
+  };
+  componentWillMount() { //is called only 1 turn before render(), sync setState()
+    this.unsubscribe;
+  };
+  render() {
+    const props = this.props;
+    const state = store.getState();
+
+    return (
+      <TodoList todos={getVisibleTodos(state.todos, state.visibilityFilter)}
+        onTodoClick={id => store.dispatch({ type: 'TOGGLE_TODO', id })}
+      />
+    );
+  }
+}
 /**** End ToDoList View  ****/
 
 /**** State Bar View  ****/
-const FilterLink = ({ filter, children, currentFilter, onClick }) => {
-  if (filter === currentFilter)
+const Link = ({ active, children, onClick }) => {
+  if (active)
     return <span>{children}</span>
-
   return (
     <a href="" onClick={e => {
       e.preventDefault(); //prevent event default (like click on btn or link)
-      onClick(filter);
+      onClick(active);
     }}>
       {children}
     </a>
   )
 };
 
-//visibilityFilter is function return state (reducer_2)
-const Footer = ({ visibilityFilter, onFilterClick }) => (
+class FilterLink extends Component {
+  componentDidMount() {
+    this.unsubscribe = store.subscribe(() => this.forceUpdate());
+  };
+  componentWillMount() {
+    this.unsubscribe;
+  };
+  render() {
+    const props = this.props;
+    const state = store.getState();
+
+    return (
+      <Link active={props.filter === state.visibilityFilter}
+        onClick={() => store.dispatch(
+          { type: 'SET_VISIBILITY_FILTER', filter: props.filter }
+        )} > {props.children} </Link>
+    );
+  }
+}
+
+const Footer = () => (
   <p>
     Tìm theo:
-    {' '} <FilterLink filter='SHOW_ALL'
-      currentFilter={visibilityFilter}
-      onClick={onFilterClick}> Tất cả </FilterLink>
-    {' | '} <FilterLink filter='SHOW_ACTIVE'
-      currentFilter={visibilityFilter}
-      onClick={onFilterClick}> Đang làm </FilterLink>
-    {' | '} <FilterLink filter='SHOW_COMPLETED'
-      currentFilter={visibilityFilter}
-      onClick={onFilterClick}> Đã làm </FilterLink>
+    {' '} <FilterLink filter='SHOW_ALL'> Tất cả </FilterLink>
+    {' | '} <FilterLink filter='SHOW_ACTIVE'> Đang làm </FilterLink>
+    {' | '} <FilterLink filter='SHOW_COMPLETED'> Đã làm </FilterLink>
   </p>
 );
 /**** End State Bar View  ****/
 
 
+let todoID = 0;
 /**** Add Todo Button  ****/
-const AddTodo = ({ onAddClick }) => {
+const AddTodo = () => {
   let input;
 
   return (
@@ -136,7 +168,7 @@ const AddTodo = ({ onAddClick }) => {
 
       <div className='col-6 col-md-2'>
         <button className="btn btn-info" onClick={() => {
-          onAddClick(input.value);
+          store.dispatch({ type: 'ADD_TODO', id: todoID++, text: input.value });
           input.value = '';
         }}> Thêm việc </button>
       </div>
@@ -146,36 +178,18 @@ const AddTodo = ({ onAddClick }) => {
 
 
 /**** Main ****/
-let todoID = 0;
-//todos, visibilityFilter is function return state (reducer_1,2)
-const TodoApp = ({ todos, visibilityFilter }) =>
-  (
-    <div className="col-xs-12">
-      <div className="row">
+const TodoApp = () => (
+  <div className="col-xs-12">
+    <div className="row">
+      <AddTodo />
 
-        <AddTodo onAddClick={text => store.dispatch(
-          { type: 'ADD_TODO', text, id: todoID++ }
-        )} />
-
-        <div className="col-6 col-md-6">
-          <Footer visibilityFilter={visibilityFilter}
-            onFilterClick={filter => store.dispatch(
-              { type: 'SET_VISIBILITY_FILTER', filter }
-            )} />
-
-          <TodoList todos={getVisibleTodos(todos, visibilityFilter)}
-            onTodoClick={id => store.dispatch(
-              { type: 'TOGGLE_TODO', id }
-            )} />
-        </div>
-
+      <div className="col-6 col-md-6">
+        <Footer />
+        <VisibleTodoList />
       </div>
+
     </div>
-  );
+  </div>
+);
 
-const render = () => {
-  ReactDOM.render(<TodoApp {...store.getState()} />, document.getElementById('root'));
-};
-
-store.subscribe(render);
-render();
+ReactDOM.render(<TodoApp />, document.getElementById('root'));
